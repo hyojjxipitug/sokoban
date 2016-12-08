@@ -1,6 +1,8 @@
 extends Node2D
 
 var Layout = []
+var step_count = 0
+var elapsed_time = 0
 
 
 # Tiles IDs used to setup floor and items tilemap
@@ -23,7 +25,7 @@ var y_max = 0
 
 func lay_floor():
 	#print ("x_max [" + str(x_max) + "]; y_max [" + str(y_max) + "]")
-	var fl = get_node("FloorLayout")
+	var fl = get_node("LevelContent/FloorLayout")
 	var ts = fl.get_tileset()
 	var stack = [player_pos]
 	
@@ -63,9 +65,9 @@ func lay_floor():
 # This function has also a second side effect, it computes the x_max and y_max needed by the next function
 #
 func set_walls_and_items():
-	var fl = get_node("FloorLayout")
-	var items = get_node("Items")
-	var initItems = get_node("InitialItems")
+	var fl = get_node("LevelContent/FloorLayout")
+	var items = get_node("LevelContent/Items")
+	var initItems = get_node("LevelContent/InitialItems")
 	var ts = fl.get_tileset()
 	var y = 0
 	for iter in Layout:
@@ -97,62 +99,76 @@ func set_walls_and_items():
 		y += 1
 
 func _ready():
-	Layout = get_tree().get_root().get_node("/root/global").levels[Globals.get("currentLevel")]
+	var level = Globals.get("currentLevel")
+	Layout = get_tree().get_root().get_node("/root/global").levels[level]
+	get_node("Title").set_text(str("SOKOBAN - Level ", level+1))
 	set_walls_and_items()
 	lay_floor()
 	set_process_input(true)
 
 func _input(event):
-	var fl = get_node("FloorLayout")
+	var fl = get_node("LevelContent/FloorLayout")
 	var ts = fl.get_tileset()
-	var items = get_node("Items")
+	var items = get_node("LevelContent/Items")
 	
-	var origin = get_node("InitialItems").get_cell(player_pos[0], player_pos[1])
+	var origin = get_node("LevelContent/InitialItems").get_cell(player_pos[0], player_pos[1])
 	if origin != TARGET:
 		origin = NONE
 	
 	if event.is_action_released("player_down") and is_move_possible(player_pos, DOWN):
 		#print ("input player down")
 		# remove character from old location
-		get_node("Items").set_cell(player_pos[0], player_pos[1], origin)
+		get_node("LevelContent/Items").set_cell(player_pos[0], player_pos[1], origin)
 		# update game state
 		player_pos[1] += 1
 		# push box if needed
 		if items.get_cell(player_pos[0], player_pos[1]) == CRATE:
 			items.set_cell(player_pos[0], player_pos[1]+1, CRATE)
+		# update steps count
+		step_count += 1
+		get_node("StepsCount").set_text(str("Steps : ", step_count))
 	
 	if event.is_action_released("player_up") and is_move_possible(player_pos, UP):
 		#print ("input player up")
 		# remove character from old location
-		get_node("Items").set_cell(player_pos[0], player_pos[1], origin)
+		get_node("LevelContent/Items").set_cell(player_pos[0], player_pos[1], origin)
 		# update game state
 		player_pos[1] -= 1
 		# push box if needed
 		if items.get_cell(player_pos[0], player_pos[1]) == CRATE:
 			items.set_cell(player_pos[0], player_pos[1]-1, CRATE)
+		# update steps count
+		step_count += 1
+		get_node("StepsCount").set_text(str("Steps : ", step_count))
 	
 	if event.is_action_released("player_right") and is_move_possible(player_pos, RIGHT):
 		#print ("input player right")
 		# remove character from old location
-		get_node("Items").set_cell(player_pos[0], player_pos[1], origin)
+		get_node("LevelContent/Items").set_cell(player_pos[0], player_pos[1], origin)
 		# update game state
 		player_pos[0] += 1
 		# push box if needed
 		if items.get_cell(player_pos[0], player_pos[1]) == CRATE:
 			items.set_cell(player_pos[0]+1, player_pos[1], CRATE)
+		# update steps count
+		step_count += 1
+		get_node("StepsCount").set_text(str("Steps : ", step_count))
 	
 	if event.is_action_released("player_left") and is_move_possible(player_pos, LEFT):
 		#print ("input player left")
 		# remove character from old location
-		get_node("Items").set_cell(player_pos[0], player_pos[1], origin)
+		get_node("LevelContent/Items").set_cell(player_pos[0], player_pos[1], origin)
 		# update game state
 		player_pos[0] -= 1
 		# push box if needed
 		if items.get_cell(player_pos[0], player_pos[1]) == CRATE:
 			items.set_cell(player_pos[0]-1, player_pos[1], CRATE)
+		# update steps count
+		step_count += 1
+		get_node("StepsCount").set_text(str("Steps : ", step_count))
 	
 	# move char sprite in the destination
-	get_node("Items").set_cell(player_pos[0], player_pos[1], PLAYER)
+	get_node("LevelContent/Items").set_cell(player_pos[0], player_pos[1], PLAYER)
 
 
 func is_move_possible(origin, direction, move_crate=false):
@@ -171,17 +187,20 @@ func is_move_possible(origin, direction, move_crate=false):
 		return false # cannot move outside of the game area
 	if destination[1] < 0 or destination[1] > x_max:
 		return false # cannot move outside of the game area
-	if get_node("FloorLayout").get_cell(destination[0], destination[1]) == WALL:
+	if get_node("LevelContent/FloorLayout").get_cell(destination[0], destination[1]) == WALL:
 		return false # cannot move into a wall
-	if move_crate and get_node("Items").get_cell(destination[0], destination[1]) == CRATE:
+	if move_crate and get_node("LevelContent/Items").get_cell(destination[0], destination[1]) == CRATE:
 		return false # cannot move a crate in another crate
-	if get_node("Items").get_cell(destination[0], destination[1]) == CRATE and not is_move_possible(destination, direction, true):
+	if get_node("LevelContent/Items").get_cell(destination[0], destination[1]) == CRATE and not is_move_possible(destination, direction, true):
 		# check if the crate itself can be moved in the same direction and doesn't hit another crate
 		return false # destination crate cannot be moved
 	#if all other test succeeded, move allowed
 	return true
 
-
+# update elapsed time label every second
+func _on_Timer_timeout():
+	elapsed_time += 1
+	get_node("ElapsedTime").set_text(str("Elapsed time : ", elapsed_time) + " s")
 
 
 
