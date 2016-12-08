@@ -202,6 +202,19 @@ func _on_Timer_timeout():
 	elapsed_time += 1
 	get_node("ElapsedTime").set_text(str("Elapsed time : ", elapsed_time) + " s")
 
+func _on_Actions_button_selected( button_idx ):
+	if button_idx == 0: # Go back to home screen
+		get_tree().get_root().get_node("/root/global").setScene("res://LevelSelection.tscn")
+	elif button_idx == 1: # restart level
+		get_tree().get_root().get_node("/root/global").setScene("res://Level.tscn")
+
+
+
+
+
+
+
+
 
 
 

@@ -1,7 +1,7 @@
 extends Node
 
 func _ready():
-	pass
+	get_node("Container/SpinBox").set_value(Globals.get("currentLevel")+1)
 
 func _on_StartLevelButton_pressed():
 	var level = get_node("Container/SpinBox").get_value()
