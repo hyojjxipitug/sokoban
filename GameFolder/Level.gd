@@ -1,27 +1,7 @@
 extends Node2D
 
-var Layout = ["############",
-			"#..  #     ###",
-			"#..  # $  $  #",
-			"#..  #$####  #",
-			"#..    @ ##  #",
-			"#..  # #  $ ##",
-			"###### ##$ $ #",
-			"  # $  $ $ $ #",
-			"  #    #     #",
-			"  ############"]
+var Layout = []
 
-#var Layout = ["    #####",
-#			"    #   #",
-#			"    #$  #",
-#			"  ###  $##",
-#			"  #  $ $ #",
-#			"### # ## #   ######",
-#			"#   # ## #####  ..#",
-#			"# $  $          ..#",
-#			"##### ### #@##  ..#",
-#			"    #     #########",
-#			"    #######"]
 
 # Tiles IDs used to setup floor and items tilemap
 const NONE = -1
@@ -117,6 +97,7 @@ func set_walls_and_items():
 		y += 1
 
 func _ready():
+	Layout = get_tree().get_root().get_node("/root/global").levels[Globals.get("currentLevel")]
 	set_walls_and_items()
 	lay_floor()
 	set_process_input(true)
