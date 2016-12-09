@@ -1,9 +1,26 @@
 extends Node2D
 
-var Layout = []
+#------------------------------------------------------------------------------------------------------
+# Member variables section
+#------------------------------------------------------------------------------------------------------
+# layout of the floor from input file. The variable holds an array of strings that will be iterated to setup level
+var Layout = [] 
+# holds the number of steps done at any point in game
 var step_count = 0
+# holds the elapsed time at any point in game
 var elapsed_time = 0
+# holds the current player position
+var player_pos = []
+# holds the list of all target cells. The variable will hold an array of arrays, each one being a position
+var targets = []
+# number of rows in level
+var x_max = 0
+# number of columns in level
+var y_max = 0
 
+#------------------------------------------------------------------------------------------------------
+# Constants section
+#------------------------------------------------------------------------------------------------------
 
 # Tiles IDs used to setup floor and items tilemap
 const NONE = -1
@@ -19,52 +36,27 @@ const RIGHT = 1
 const DOWN = 2
 const LEFT = 3
 
-var player_pos = []
-var targets = []
-var x_max = 0
-var y_max = 0
+#------------------------------------------------------------------------------------------------------
+# Methods section - Level setup
+#------------------------------------------------------------------------------------------------------
 
-func lay_floor():
-	#print ("x_max [" + str(x_max) + "]; y_max [" + str(y_max) + "]")
-	var fl = get_node("LevelContent/FloorLayout")
-	var ts = fl.get_tileset()
-	var stack = [player_pos]
-	
-	#print ("----------------------------------------------")
-	while (stack.size() > 0):
-		#print ("Current stack: " + str(stack))
-		var current = stack[stack.size()-1]
-		stack.pop_back()
-		#print ("Current tile: " + str(current))
-		var x = current[0]
-		var y = current[1]
-		
-		if fl.get_cell(x, y) == WALL or fl.get_cell(x, y) == FLOOR:
-			#print ("Wall/Floor: [" + str(x) + ", " + str(y) + "] => continue")
-			#print ("----------------------------------------------")
-			continue
-		
-		#print ("Tile: [" + str(x) + ", " + str(y) + "] => not set yet")
-		fl.set_cell(x, y, FLOOR)
-		
-		if x > 0:
-			stack.append([x-1, y])
-		if y > 0:
-			stack.append([x, y-1])
-		if x < x_max:
-			stack.append([x+1, y])
-		if y < y_max:
-			stack.append([x, y+1])
-		#print ("----------------------------------------------")
+# initialization retrieves the level from Global dictionary, then loads the correct level description 
+# from global auto-loaded node in scene tree and then processes it.
+func _ready():
+	var level = Globals.get("currentLevel")
+	Layout = get_tree().get_root().get_node("/root/global").levels[level]
+	get_node("Title").set_text(str("SOKOBAN - Level ", level+1))
+	set_walls_and_items()
+	lay_floor()
+	set_process_input(true)
 
-#
 # This function without argument iterate on all char in the level layout. 
 # Each line is considered as one row of the level
 # Wall and item tiles (wall, crate, target and player) are set (wall in the floor layout tilemap, 
-# items in the the items tilemap; this is needed because I have two layer: item above floor)
+# items in the the items tilemap; this is needed because I have two layers: items above floor)
 # Floor setup being a bit trickier it is treated in a separate dedicated function
-# This function has also a second side effect, it computes the x_max and y_max needed by the next function
-#
+# This function has also a second side effect, it computes the x_max and y_max needed by the 
+# function lay_floor
 func set_walls_and_items():
 	var fl = get_node("LevelContent/FloorLayout")
 	var items = get_node("LevelContent/Items")
@@ -100,14 +92,84 @@ func set_walls_and_items():
 			y_max = y
 		y += 1
 
-func _ready():
-	var level = Globals.get("currentLevel")
-	Layout = get_tree().get_root().get_node("/root/global").levels[level]
-	get_node("Title").set_text(str("SOKOBAN - Level ", level+1))
-	set_walls_and_items()
-	lay_floor()
-	set_process_input(true)
+# This function used to place the floor tiles is separated from the function set_walls_and_items
+# because I cannot determine from the input if a space is a floor tile inside the level or an empty 
+# space outside the level. The algorithm is a graph traversal going from floor tile to floor tile starting
+# from the original player position. Note that I implemented it with a while loop around a stack of node 
+# in the graph to visit in order to avoid potential stack overflow if done with recursion
+func lay_floor():
+	var fl = get_node("LevelContent/FloorLayout")
+	var ts = fl.get_tileset()
+	var stack = [player_pos]
+	
+	while (stack.size() > 0):
+		var current = stack[stack.size()-1] # current tile being visited
+		stack.pop_back() # pop_back does NOT return the removed element, hence I get it on previous line
+		#print ("Current tile: " + str(current))
+		var x = current[0]
+		var y = current[1]
+		
+		if fl.get_cell(x, y) == WALL or fl.get_cell(x, y) == FLOOR:
+			# if the tile is either a wall or a floor we stop processing this node
+			continue
+		
+		# since we ensured we could put a floor tile, it is done on next line
+		fl.set_cell(x, y, FLOOR)
+		
+		# add to the stack of nodes to process the neighbours (if within boundaries)
+		if x > 0:
+			stack.append([x-1, y])
+		if y > 0:
+			stack.append([x, y-1])
+		if x < x_max:
+			stack.append([x+1, y])
+		if y < y_max:
+			stack.append([x, y+1])
 
+#------------------------------------------------------------------------------------------------------
+# Methods section - Game loop for this level
+#------------------------------------------------------------------------------------------------------
+
+# this functions executes the actual move of the player on screen + game states
+# /!\ Attention, no validation whatsoever is executed
+# the function also pushes crate if needed
+func move_player(direction):
+	var items = get_node("LevelContent/Items")
+	var origin = get_node("LevelContent/InitialItems").get_cell(player_pos[0], player_pos[1])
+	if origin != TARGET: # only re-establish target sprites
+		origin = NONE
+	# remove character from old location
+	get_node("LevelContent/Items").set_cell(player_pos[0], player_pos[1], origin)
+	# update game state based on direction
+	var crate_pos = [player_pos[0], player_pos[1]]
+	if direction == DOWN:
+		player_pos[1] += 1
+		crate_pos[1] += 2
+	elif direction == UP:
+		player_pos[1] -= 1
+		crate_pos[1] -= 2
+	if direction == RIGHT:
+		player_pos[0] += 1
+		crate_pos[0] += 2
+	elif direction == LEFT:
+		player_pos[0] -= 1
+		crate_pos[0] -= 2
+	
+	# push box if needed
+	if items.get_cell(player_pos[0], player_pos[1]) == CRATE:
+		items.set_cell(crate_pos[0], crate_pos[1], CRATE)
+	# update steps count
+	step_count += 1
+	get_node("StepsCount").set_text(str("Steps : ", step_count))
+	
+	# move char sprite in the destination
+	get_node("LevelContent/Items").set_cell(player_pos[0], player_pos[1], PLAYER)
+	if is_game_over():
+		on_game_over()
+
+# This method reacts to player moves action as defined in inputmap. After checking that the player is
+# actually moving and that he's allowed to go in that direction (taking crates into account),
+# the method calls the move_player method
 func _input(event):
 	var fl = get_node("LevelContent/FloorLayout")
 	var ts = fl.get_tileset()
@@ -118,63 +180,21 @@ func _input(event):
 		origin = NONE
 	
 	if event.is_action_released("player_down") and is_move_possible(player_pos, DOWN):
-		#print ("input player down")
-		# remove character from old location
-		get_node("LevelContent/Items").set_cell(player_pos[0], player_pos[1], origin)
-		# update game state
-		player_pos[1] += 1
-		# push box if needed
-		if items.get_cell(player_pos[0], player_pos[1]) == CRATE:
-			items.set_cell(player_pos[0], player_pos[1]+1, CRATE)
-		# update steps count
-		step_count += 1
-		get_node("StepsCount").set_text(str("Steps : ", step_count))
+		move_player(DOWN)
 	
 	if event.is_action_released("player_up") and is_move_possible(player_pos, UP):
-		#print ("input player up")
-		# remove character from old location
-		get_node("LevelContent/Items").set_cell(player_pos[0], player_pos[1], origin)
-		# update game state
-		player_pos[1] -= 1
-		# push box if needed
-		if items.get_cell(player_pos[0], player_pos[1]) == CRATE:
-			items.set_cell(player_pos[0], player_pos[1]-1, CRATE)
-		# update steps count
-		step_count += 1
-		get_node("StepsCount").set_text(str("Steps : ", step_count))
+		move_player(UP)
 	
 	if event.is_action_released("player_right") and is_move_possible(player_pos, RIGHT):
-		#print ("input player right")
-		# remove character from old location
-		get_node("LevelContent/Items").set_cell(player_pos[0], player_pos[1], origin)
-		# update game state
-		player_pos[0] += 1
-		# push box if needed
-		if items.get_cell(player_pos[0], player_pos[1]) == CRATE:
-			items.set_cell(player_pos[0]+1, player_pos[1], CRATE)
-		# update steps count
-		step_count += 1
-		get_node("StepsCount").set_text(str("Steps : ", step_count))
+		move_player(RIGHT)
 	
 	if event.is_action_released("player_left") and is_move_possible(player_pos, LEFT):
-		#print ("input player left")
-		# remove character from old location
-		get_node("LevelContent/Items").set_cell(player_pos[0], player_pos[1], origin)
-		# update game state
-		player_pos[0] -= 1
-		# push box if needed
-		if items.get_cell(player_pos[0], player_pos[1]) == CRATE:
-			items.set_cell(player_pos[0]-1, player_pos[1], CRATE)
-		# update steps count
-		step_count += 1
-		get_node("StepsCount").set_text(str("Steps : ", step_count))
-	
-	# move char sprite in the destination
-	get_node("LevelContent/Items").set_cell(player_pos[0], player_pos[1], PLAYER)
-	if is_game_over():
-		on_game_over()
+		move_player(LEFT)
 
-
+# This method verifies that the move requested by the player is a legal one by checking 
+# first all reasons to deny the move. If move_crate is set to true, it will check if the 
+# crate located on the landing cell can be pushed further. This mode is used the method itself
+# via recursion and is transparent to the caller
 func is_move_possible(origin, direction, move_crate=false):
 	if direction < 0 or direction > 3:
 		return false # invalid argument
@@ -220,11 +240,17 @@ func on_game_over():
 	get_node("Congrats/VBoxContainer/CongratsDetails").set_text(details)
 	get_node("Congrats").show()
 
+
+#------------------------------------------------------------------------------------------------------
+# Methods section - Event listening connections
+#------------------------------------------------------------------------------------------------------
+
 # update elapsed time label every second
 func _on_Timer_timeout():
 	elapsed_time += 1
 	get_node("ElapsedTime").set_text(str("Elapsed time : ", elapsed_time) + " s")
 
+# reacts to the buttons on the right sode of the screen
 func _on_Actions_button_selected( button_idx ):
 	if button_idx == 0: # Go back to home screen
 		get_tree().get_root().get_node("/root/global").setScene("res://LevelSelection.tscn")
