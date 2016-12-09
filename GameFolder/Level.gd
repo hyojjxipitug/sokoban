@@ -20,6 +20,7 @@ const DOWN = 2
 const LEFT = 3
 
 var player_pos = []
+var targets = []
 var x_max = 0
 var y_max = 0
 
@@ -85,6 +86,7 @@ func set_walls_and_items():
 				player_pos = [x, y]
 			elif char == ".": # target
 				type = TARGET
+				targets.append([x, y])
 			
 			if type == WALL:
 				fl.set_cell(x, y, WALL)
@@ -169,6 +171,8 @@ func _input(event):
 	
 	# move char sprite in the destination
 	get_node("LevelContent/Items").set_cell(player_pos[0], player_pos[1], PLAYER)
+	if is_game_over():
+		on_game_over()
 
 
 func is_move_possible(origin, direction, move_crate=false):
@@ -197,6 +201,25 @@ func is_move_possible(origin, direction, move_crate=false):
 	#if all other test succeeded, move allowed
 	return true
 
+# check if the game is finished succesfully
+func is_game_over():
+	var items = get_node("LevelContent/Items")
+	for target in targets:
+		# verify that all target cells are covered by a crate or return false
+		if items.get_cell(target[0], target[1]) != CRATE:
+			return false
+	# all targets were checked succesfully
+	return true
+
+# congratulate the player for a finished level
+func on_game_over():
+	get_node("Timer").stop()
+	set_process_input(false)
+	var level = Globals.get("currentLevel") + 1
+	var details = "\n\nYou finished level %d in %d steps and %d seconds\n\n\n" % [level, step_count, elapsed_time]
+	get_node("Congrats/VBoxContainer/CongratsDetails").set_text(details)
+	get_node("Congrats").show()
+
 # update elapsed time label every second
 func _on_Timer_timeout():
 	elapsed_time += 1
@@ -208,24 +231,17 @@ func _on_Actions_button_selected( button_idx ):
 	elif button_idx == 1: # restart level
 		get_tree().get_root().get_node("/root/global").setScene("res://Level.tscn")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# This function is called when the user presses one of the two available buttons when he finishes a level
+func _on_CongratsButtons_button_selected( button_idx ):
+	if button_idx == 0: # Go back to home screen
+		get_tree().get_root().get_node("/root/global").setScene("res://LevelSelection.tscn")
+	elif button_idx == 1: # go to next level
+		var level = Globals.get("currentLevel") + 1
+		# check if we reached the last level
+		if level == get_tree().get_root().get_node("/root/global").levels.size():
+			#in this case go back to level selection screen
+			get_tree().get_root().get_node("/root/global").setScene("res://LevelSelection.tscn")
+		else:
+			# go to next level 
+			Globals.set("currentLevel", level)
+			get_tree().get_root().get_node("/root/global").setScene("res://Level.tscn")
