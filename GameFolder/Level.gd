@@ -3,6 +3,7 @@ extends Node2D
 #------------------------------------------------------------------------------------------------------
 # Member variables section
 #------------------------------------------------------------------------------------------------------
+
 # layout of the floor from input file. The variable holds an array of strings that will be iterated to setup level
 var Layout = [] 
 # holds the number of steps done at any point in game
@@ -17,6 +18,11 @@ var targets = []
 var x_max = 0
 # number of columns in level
 var y_max = 0
+# this variables holds the list of moves for the undo/redo functionality
+# the stack will hold values under the form [Direction (see constants section), bool crate moved]
+var undo_stack = []
+# stack pointer needed to allow redo specifically. Initialized at -1 as it will be incremented for each step
+var undo_stack_pointer = -1
 
 #------------------------------------------------------------------------------------------------------
 # Constants section
@@ -133,7 +139,9 @@ func lay_floor():
 # this functions executes the actual move of the player on screen + game states
 # /!\ Attention, no validation whatsoever is executed
 # the function also pushes crate if needed
-func move_player(direction):
+# optional parameter update_stack is used to explicitely ask not to add anything to the undo stack.
+# This is needed to allow the undo/redo functionality to reuse the move_player method
+func move_player(direction, update_stack=true):
 	var items = get_node("LevelContent/Items")
 	var origin = get_node("LevelContent/InitialItems").get_cell(player_pos[0], player_pos[1])
 	if origin != TARGET: # only re-establish target sprites
@@ -155,12 +163,21 @@ func move_player(direction):
 		player_pos[0] -= 1
 		crate_pos[0] -= 2
 	
+	var crate_moved = false
 	# push box if needed
 	if items.get_cell(player_pos[0], player_pos[1]) == CRATE:
+		crate_moved = true
 		items.set_cell(crate_pos[0], crate_pos[1], CRATE)
 	# update steps count
 	step_count += 1
 	get_node("StepsCount").set_text(str("Steps : ", step_count))
+	
+	# handle undo_stack
+	if update_stack:
+		while undo_stack.size() - 1 > undo_stack_pointer:
+			undo_stack.pop_back() # remove previous steps undone and replace by new one
+		undo_stack.append([direction, crate_moved])
+		undo_stack_pointer += 1
 	
 	# move char sprite in the destination
 	get_node("LevelContent/Items").set_cell(player_pos[0], player_pos[1], PLAYER)
@@ -221,6 +238,59 @@ func is_move_possible(origin, direction, move_crate=false):
 	#if all other test succeeded, move allowed
 	return true
 
+#------------------------------------------------------------------------------------------------------
+# Methods section - Undo/Redo handling
+#------------------------------------------------------------------------------------------------------
+
+# undo last move from stack. Note that this count as step :-)
+func undo_move():
+	if undo_stack_pointer < 0:
+		return # nothing to undo, stack is empty
+	
+	var last = undo_stack[undo_stack_pointer]
+	# undo_stack.pop_back() # I do not popback the last element to be able to have the redo functionality
+	
+	var new_crate_pos = [player_pos[0],player_pos[1]] 
+	var old_crate_pos = [player_pos[0],player_pos[1]] # location at which I will later remove the crate
+	
+	# determine in which direction to move the player
+	var direction = last[0]
+	if direction == UP:
+		direction = DOWN
+		old_crate_pos[1] -= 1 
+	elif direction == DOWN:
+		direction = UP
+		old_crate_pos[1] += 1 
+	elif direction == LEFT:
+		direction = RIGHT
+		old_crate_pos[0] -= 1 
+	elif direction == RIGHT:
+		direction = LEFT
+		old_crate_pos[0] += 1 
+	
+	if last[1]: # remove crate from current position
+		get_node("LevelContent/Items").set_cell(old_crate_pos[0],old_crate_pos[1], NONE)
+	
+	undo_stack_pointer -= 1 # goes one step back in the stack
+	move_player(direction, false)
+	
+	if last[1]: # a crate has been moved and must be reverted back
+		get_node("LevelContent/Items").set_cell(new_crate_pos[0],new_crate_pos[1], CRATE)
+
+# This functions re-excute the last move undone
+func redo_move():
+	if undo_stack_pointer >= undo_stack.size() - 1:
+		return # nothing to do, stack pointer already pointing to the top of the stack, 
+		       # meaning there is nothing to redo
+	
+	undo_stack_pointer += 1
+	var last = undo_stack[undo_stack_pointer]
+	move_player(last[0], false)
+
+#------------------------------------------------------------------------------------------------------
+# Methods section - Game over handling
+#------------------------------------------------------------------------------------------------------
+
 # check if the game is finished succesfully
 func is_game_over():
 	var items = get_node("LevelContent/Items")
@@ -256,6 +326,13 @@ func _on_Actions_button_selected( button_idx ):
 		get_tree().get_root().get_node("/root/global").setScene("res://LevelSelection.tscn")
 	elif button_idx == 1: # restart level
 		get_tree().get_root().get_node("/root/global").setScene("res://Level.tscn")
+	elif button_idx == 2: # undo last move
+		undo_move()
+	elif button_idx == 3: # redo last move
+		redo_move()
+	# for some reason, if I don't remove the focus from the button array, subsequent arrow key presses
+	# are triggering new events here... :-(
+	get_node("Actions").set_focus_mode(Control.FOCUS_NONE)
 
 # This function is called when the user presses one of the two available buttons when he finishes a level
 func _on_CongratsButtons_button_selected( button_idx ):
