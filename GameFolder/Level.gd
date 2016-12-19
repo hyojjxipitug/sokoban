@@ -269,7 +269,10 @@ func undo_move():
 		old_crate_pos[0] += 1 
 	
 	if last[1]: # remove crate from current position
-		get_node("LevelContent/Items").set_cell(old_crate_pos[0],old_crate_pos[1], NONE)
+		var remove = NONE
+		if get_node("LevelContent/InitialItems").get_cell(old_crate_pos[0],old_crate_pos[1]) == TARGET:
+			remove = TARGET
+		get_node("LevelContent/Items").set_cell(old_crate_pos[0],old_crate_pos[1], remove)
 	
 	undo_stack_pointer -= 1 # goes one step back in the stack
 	move_player(direction, false)
